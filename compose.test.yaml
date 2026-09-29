@@ -1,0 +1,39 @@
+services:
+  postgres:
+    tmpfs: [/tmp]
+  mailpit:
+    ports: !reset []
+  backend:
+    ports: !reset []
+  frontend:
+    ports: !reset []
+  backend-tests:
+    profiles: [test]
+    build:
+      context: .
+      target: tests
+    environment:
+      TEST_API_URL: http://backend:8080
+      TEST_MAILPIT_URL: http://mailpit:8025
+      TEST_DATABASE: Host=postgres;Database=health;Username=health;Password=${POSTGRES_PASSWORD:-local-demo-password}
+    volumes: [./artifacts/backend:/results]
+    depends_on:
+      backend: {condition: service_healthy}
+      demo-target: {condition: service_healthy}
+  browser-tests:
+    profiles: [test]
+    build:
+      context: ../website-health-checker-frontend
+      target: tests
+    environment:
+      BASE_URL: http://frontend:3000
+      API_URL: http://backend:8080
+      MAILPIT_URL: http://mailpit:8025
+    init: true
+    ipc: host
+    volumes:
+      - ../website-health-checker-frontend/playwright-report:/app/playwright-report
+      - ../website-health-checker-frontend/test-results:/app/test-results
+    depends_on:
+      frontend: {condition: service_healthy}
+      demo-target: {condition: service_healthy}

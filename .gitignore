@@ -1,0 +1,17 @@
+# Build and test output
+[Bb]in/
+[Oo]bj/
+TestResults/
+artifacts/
+coverage/
+
+# Local configuration and editor files
+.env*
+!.env.example
+.vs/
+.idea/
+*.user
+*.suo
+*.log
+.DS_Store
+Thumbs.db

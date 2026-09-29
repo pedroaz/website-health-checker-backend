@@ -1,0 +1,58 @@
+{
+  "model": "claude-haiku-4-5-20251001",
+  "availableModels": [
+    "claude-haiku-4-5-20251001"
+  ],
+  "env": {
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4-5-20251001",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-haiku-4-5-20251001",
+    "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "true"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/agent/agent.py\" hook",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/agent/agent.py\" hook",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/agent/agent.py\" hook",
+            "timeout": 15
+          }
+        ],
+        "matcher": "Agent|Task"
+      }
+    ],
+    "PreModelSwitch": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/agent/agent.py\" hook",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

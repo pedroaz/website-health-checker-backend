@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headersHelper": "python3 scripts/agent/mcp_headers.py github"
+    },
+    "jira": {
+      "type": "http",
+      "url": "https://mcp.atlassian.com/v2/mcp",
+      "headersHelper": "python3 scripts/agent/mcp_headers.py jira"
+    }
+  }
+}

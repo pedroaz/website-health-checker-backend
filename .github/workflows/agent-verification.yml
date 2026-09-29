@@ -1,0 +1,46 @@
+name: Agent verification
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      companion_ref:
+        description: Companion branch or commit (default main)
+        default: main
+        required: true
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: website-health-checker-backend
+      - uses: actions/checkout@v4
+        with:
+          repository: pedroaz/website-health-checker-frontend
+          ref: ${{ inputs.companion_ref || 'main' }}
+          path: website-health-checker-frontend
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Bootstrap
+        working-directory: website-health-checker-backend
+        run: bash scripts/agent/setup.sh --no-browser
+      - name: Verify both repositories
+        working-directory: website-health-checker-backend
+        run: python3 scripts/agent/agent.py verify full
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-reports
+          path: |
+            */artifacts/
+            */playwright-report/
+            */test-results/

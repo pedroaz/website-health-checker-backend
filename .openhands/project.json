@@ -1,0 +1,6 @@
+{
+  "role": "backend",
+  "repository": "pedroaz/website-health-checker-backend",
+  "companion": "website-health-checker-frontend",
+  "model": "claude-haiku-4-5-20251001"
+}

@@ -69,3 +69,7 @@ The main code lives in `src/HealthChecker`: routes in `Program.cs`, persistence 
 ## What production would require
 
 This deliberately omits authentication/authorization, tenant isolation, rate limits and quotas, distributed job leases, durable notification retries/outbox, bounded retention, operational alerting, backups and recovery drills, secret management, HTTPS termination, network-enforced egress restrictions and service hardening. A production checker needs careful SSRF review and network isolation in addition to application validation. Add those based on deployment needs, not as hidden complexity in this demo. Hosted CI, deployment, releases and OpenAI integration are deferred.
+
+## Agent development
+
+See [local and OpenHands agent setup](docs/AGENT_SETUP.md) for Claude Haiku, MCP connections, lifecycle skills and CI verification.

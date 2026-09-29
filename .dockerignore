@@ -17,3 +17,7 @@ playwright-report
 coverage
 blob-report
 out
+
+# MCP credential cache must never enter an image
+.claude/*.local.json
+**/__pycache__

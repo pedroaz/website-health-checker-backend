@@ -51,3 +51,7 @@ Populate the sibling `website-health-checker-frontend` and `website-health-check
 Local, single-user and unauthenticated. No hosted CI, deployment, release, or OpenAI integration in this iteration. No distributed scheduling or durable mail retries. If interrupted during delivery, a check may retain Pending email status; do not claim exactly-once notification semantics. Keep the implementation understandable for a showcase.
 
 Document future production requirements (authentication, tenant isolation, quotas, robust jobs, durable notification retries/outbox, retention, monitoring, backups, secret management, TLS and network isolation), without implementing that infrastructure now.
+
+## Agent setup extension (September 2026)
+
+The subsequent agent-development setup explicitly adds GitHub Actions CI, Claude Haiku configuration, repository MCP connections and lifecycle skills in both repositories. This supersedes the original no-hosted-CI scope above. See `docs/AGENT_SETUP.md` for local/cloud provisioning, credentials, verification and the remaining account-side Jira/Slack steps. Deployment and automatic merging remain outside this extension.

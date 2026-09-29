@@ -12,3 +12,7 @@ This repository is a small local showcase, not Call Nina and not a production se
 - Tests must preserve behavioral assertions. A product defect is a product defect; do not skip assertions or inflate timeouts to hide one. Capture failure evidence and fix the owning code.
 - Frontend Playwright agents are defined in the sibling `.codex/agents/`. Coordinate contract changes across both repositories. Use the frontend's planner → generator → healer workflow for browser testing.
 - Verify the final container stack and relevant tests before reporting success. Record any unverified behavior accurately.
+
+## Agent lifecycle
+
+Agent setup and CI are now part of this repository. Read `docs/AGENT_SETUP.md`. Claude reads `CLAUDE.md` and `.claude/skills`; native OpenHands should read `.claude/skills/work-ticket/SKILL.md` explicitly and follow the same flow. Use Haiku only with no automatic upgrades. Ticket work uses feature branches and PRs, never direct main pushes, merges or deployments. Verification evidence must match the current files. A PR is ready for review, not Done.

@@ -2,28 +2,123 @@
 
 A local, single-user showcase: add a website, check its health, inspect history, and capture a result email in Mailpit. Built with ASP.NET Core 10, EF Core, PostgreSQL, Next.js and Playwright. No OpenAI integration yet.
 
-## Start
+## Prerequisites
 
-Install Docker with Compose v2.24.4 or newer. Keep both repositories beside one another:
+Before starting, ensure you have the following:
 
-```text
-openhands-demo/
-  website-health-checker-backend/
-  website-health-checker-frontend/
+- **Docker with Compose v2.24.4 or newer** — required to run the application and tests
+- **Both repositories checked out side by side** — this backend and the sibling frontend must be in the same parent directory:
+  ```text
+  parent-directory/
+    website-health-checker-backend/     ← this repo
+    website-health-checker-frontend/    ← required sibling repo
+  ```
+
+To clone the frontend if you haven't already:
+```sh
+cd ..
+git clone <frontend-repo-url> website-health-checker-frontend
+cd website-health-checker-backend
 ```
 
-From this repository:
+## Startup
 
+From the backend repository directory, start the application stack:
+
+**Core application** (monitors external websites):
 ```sh
-# Core application (public HTTP/HTTPS targets)
 docker compose up --build -d --wait
-# Include predictable websites for a live demo
+```
+
+**With demo targets** (includes predictable test endpoints for live demonstrations):
+```sh
 docker compose --profile demo up --build -d --wait
 ```
 
-Open [dashboard](http://localhost:3000), [Mailpit inbox](http://localhost:8025), or [OpenAPI JSON](http://localhost:8080/openapi/v1.json). PostgreSQL and SMTP are internal only. `.env.example` lists optional port/password overrides; copy to `.env` if needed. Defaults intentionally work without configuration. If port 8025 is occupied, set `MAILPIT_PORT=8026` in `.env`; Compose also updates the dashboard inbox link. Stop with `docker compose --profile demo down`. Named volumes preserve websites, history and emails. **To intentionally erase local demo data**, use `docker compose --profile demo down -v`.
+After startup completes, access:
+- **Dashboard**: [http://localhost:3000](http://localhost:3000)
+- **Mailpit inbox** (captured emails): [http://localhost:8025](http://localhost:8025)
+- **OpenAPI documentation**: [http://localhost:8080/openapi/v1.json](http://localhost:8080/openapi/v1.json)
 
-With the demo profile, add `http://demo-target:8080/healthy` and any valid email, e.g. `demo@example.test`. Other endpoints: `/failing` (503), `/redirect` (to healthy), `/slow` (timeout), `/loop` (redirect limit), `/redirect-private` (blocked redirect). The exact `http://demo-target:8080` origin is the only private-network exception, and only with Development + `AllowDemoTarget=true`. This is a local showcase, not a public hosting configuration.
+PostgreSQL and SMTP services run internally and are not accessible from outside the container network.
+
+### Configuration
+
+`.env.example` lists optional overrides for ports and database password. To customize:
+```sh
+cp .env.example .env
+# Edit .env with your preferred settings
+```
+
+Default settings work without configuration. Common overrides:
+- `WEB_PORT=3000` — dashboard port
+- `API_PORT=8080` — backend API port
+- `MAILPIT_PORT=8025` — email inbox port
+- `POSTGRES_PASSWORD=local-demo-password` — database password
+
+If port 8025 is already in use, set `MAILPIT_PORT=8026` in `.env`; Compose automatically updates the dashboard inbox link.
+
+### Stopping and cleanup
+
+Stop the application:
+```sh
+docker compose --profile demo down
+```
+
+Named volumes preserve websites, monitoring history, and emails between restarts. **To erase all demo data and start fresh**:
+```sh
+docker compose --profile demo down -v
+```
+
+## Verification
+
+Verify the application and demo targets are working correctly. Run these commands from the backend repository directory.
+
+**Run the full test suite** (full stack integration tests — Docker required only):
+```sh
+./scripts/test.sh
+```
+
+This test runner:
+- Creates an isolated Compose project with its own PostgreSQL and Mailpit instances
+- Runs backend unit and integration tests
+- Runs browser tests with Chromium (from the frontend repository)
+- Verifies data persistence by restarting PostgreSQL and the API
+- Cleans up only its own test project (leaves demo data untouched)
+- Reports: backend results in `artifacts/backend/backend.trx`; browser results in `../website-health-checker-frontend/playwright-report/index.html`
+
+**Run fast local unit tests** (requires .NET 10 SDK):
+```sh
+dotnet test tests/HealthChecker.Tests --filter ‘Category!=Integration’
+```
+
+**Verify code formatting** (requires .NET 10 SDK):
+```sh
+dotnet format WebsiteHealthChecker.slnx --verify-no-changes
+```
+
+### Testing notes
+
+- All tests run against isolated demo databases; the demo data stack is never modified.
+- A failed test suite exits with nonzero status; test artifacts and logs are preserved in `artifacts/` for inspection.
+- No tests make requests to public websites.
+- Test failure logs are saved to `artifacts/compose-test.log`.
+
+## Demo Targets
+
+When running with the `--profile demo` flag, predictable demo endpoints are available for testing and demonstration:
+
+**Base URL**: `http://demo-target:8080/`
+
+Available endpoints:
+- `/healthy` — returns 200 (healthy check example)
+- `/failing` — returns 503 (unhealthy check example)
+- `/redirect` — redirects to `/healthy`
+- `/slow` — exceeds the 10-second timeout
+- `/loop` — triggers a redirect limit violation (>5 redirects)
+- `/redirect-private` — blocked (private network redirect)
+
+Add monitors for these targets in the dashboard with any valid email (e.g., `demo@example.test`). The exact `http://demo-target:8080` origin is the only private-network exception, available only in Development mode with `AllowDemoTarget=true`. This is a local showcase, not a public hosting configuration.
 
 ## Behavior
 
@@ -46,19 +141,6 @@ Deletion cascades history. Details return the newest 50 checks; older history re
 | GET | `/openapi/v1.json` | Generated OpenAPI description |
 
 Invalid URLs/emails produce HTTP 400 validation problem details. Unknown monitor IDs return 404. UI requests are forwarded by Next.js to this API, avoiding browser CORS configuration.
-
-## Verify
-
-```sh
-# Full isolated suite; Docker is the only prerequisite
-./scripts/test.sh
-# Fast local unit tests (.NET 10 SDK)
-dotnet test tests/HealthChecker.Tests --filter 'Category!=Integration'
-# Formatting validation
-dotnet format WebsiteHealthChecker.slnx --verify-no-changes
-```
-
-The full runner creates a uniquely named Compose project without published ports, uses its own PostgreSQL/Mailpit volumes, runs backend tests and Chromium browser tests, restarts PostgreSQL/API to prove persistence, and removes only that test project. Backend reports: `artifacts/backend/backend.trx`. Browser report: `../website-health-checker-frontend/playwright-report/index.html`; failure screenshots/traces: frontend `test-results/`. A failed suite exits nonzero; artifacts and `artifacts/compose-test.log` remain. No tests contact public websites.
 
 ## Develop
 

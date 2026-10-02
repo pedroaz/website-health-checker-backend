@@ -10,11 +10,12 @@ graph TB
         Dashboard["📊 Next.js Dashboard<br/>(port 3000)"]
     end
     
-    subgraph "Backend Services"
-        API["🌐 ASP.NET Core 10 API<br/>(port 8080)<br/>- GET/POST /api/monitors<br/>- PATCH /api/monitors/{id}<br/>- POST /api/monitors/{id}/checks"]
-        Scheduler["⏱️ Hosted Scheduler<br/>Runs every 5 seconds<br/>Triggers checks every 5 minutes"]
+    subgraph "Backend Services (Single ASP.NET Core 10 Instance)"
+        API["🌐 HTTP API<br/>(port 8080)<br/>- GET/POST /api/monitors<br/>- PATCH /api/monitors/{id}<br/>- POST /api/monitors/{id}/checks"]
+        Scheduler["⏱️ Background Scheduler<br/>Runs every 5 seconds<br/>Triggers checks every 5 minutes"]
+        Service["🔄 CheckService<br/>Coordinates checks<br/>& email delivery"]
         Checker["🔍 WebsiteChecker<br/>- HTTP validation<br/>- Redirect following<br/>- DNS pinning<br/>- Timeout handling"]
-        Mailer["📧 Email Service<br/>Sends results via SMTP<br/>Independent of health status"]
+        Mailer["📧 ResultMailer<br/>Sends results via SMTP<br/>Independent of health status"]
     end
     
     subgraph "Data Layer"
@@ -27,17 +28,21 @@ graph TB
     end
     
     Dashboard -->|API calls| API
+    API -->|Trigger checks| Service
     API -->|Query/Insert| DB
-    API -->|Trigger checks| Checker
-    Scheduler -->|Poll for due| API
+    Scheduler -->|Poll due monitors| DB
+    Scheduler -->|Trigger check| Service
+    Service -->|Execute| Checker
+    Service -->|Trigger| Mailer
     Checker -->|HTTP requests| Websites
+    Checker -->|Validate DNS| Websites
     Mailer -->|SMTP| Mailpit
-    API -->|Save results| DB
-    API -->|Trigger email| Mailer
+    Service -->|Save results<br/>Update status| DB
     
     style Dashboard fill:#e1f5ff
     style API fill:#fff3e0
     style Scheduler fill:#f3e5f5
+    style Service fill:#ffe0b2
     style Checker fill:#e8f5e9
     style Mailer fill:#fce4ec
     style DB fill:#ede7f6
@@ -51,28 +56,30 @@ graph TB
 sequenceDiagram
     participant User
     participant API as ASP.NET Core<br/>API
+    participant Service as CheckService
     participant Checker as WebsiteChecker
     participant DB as PostgreSQL
     participant SMTP as Mailpit
     
     User->>API: POST /api/monitors<br/>{url, email}
     API->>DB: Create monitor
-    API->>Checker: Execute first check
+    API->>Service: Run check
     
+    Service->>Checker: Check(url)
     Checker->>Checker: Validate URL & DNS
-    Checker->>Checker: GET request with<br/>5-redirect limit
+    Checker->>Checker: GET with redirects<br/>(max 5, each hop<br/>validates DNS)
     Checker->>Checker: Measure response time<br/>(10s deadline)
-    Checker->>DB: Save check result
-    Checker->>SMTP: Send result email
-    SMTP->>DB: Update email status
+    Checker-->>Service: Return CheckResult
+    Service->>DB: Save result<br/>EmailStatus=Pending
+    Service->>SMTP: Send email
+    Service->>DB: Update EmailStatus<br/>Sent/Failed
     
     API-->>User: Return saved result
     
     Note over Scheduler: Every 5 seconds
-    Scheduler->>API: Poll monitors
-    Scheduler->>API: Find due monitors<br/>(5 min intervals)
-    API->>Checker: Trigger check
-    Checker->>DB: Save result & email status
+    Scheduler->>DB: Query monitors where<br/>NextCheckAt <= now
+    Scheduler->>Service: Run check for<br/>due monitors
+    Service->>DB: Save result &<br/>update NextCheckAt
 ```
 
 ## Component Details
@@ -95,26 +102,25 @@ sequenceDiagram
 
 ```mermaid
 erDiagram
-    MONITORS ||--o{ CHECKS : has
+    SITE_MONITORS ||--o{ CHECK_RESULTS : has
     
-    MONITORS {
+    SITE_MONITORS {
         guid id PK
-        string url
-        string email
+        string url "max 2048"
+        string email "max 254"
         bool paused
-        timestamp due_at
+        timestamp next_check_at
         timestamp created_at
-        timestamp updated_at
     }
     
-    CHECKS {
+    CHECK_RESULTS {
         guid id PK
         guid monitor_id FK
-        int status_code
-        int response_time_ms
-        string health_status
-        string email_status
-        string error_message
+        int status_code "nullable"
+        long response_time_ms
+        bool healthy
+        string email_status "Pending/Sent/Failed"
+        string error "nullable"
         timestamp checked_at
     }
 ```
@@ -176,27 +182,37 @@ graph TD
 
 ```mermaid
 graph TD
-    Start["GET {url}<br/>with 10s deadline"]
+    Start["Start check<br/>10s deadline"]
+    ParseURL["Parse & validate URL<br/>- Reject credentials<br/>- HTTP/HTTPS only"]
+    ResolveDNS["Resolve DNS<br/>- Get IP addresses<br/>- Reject private IPs"]
+    SendRequest["Send GET to IP<br/>(not hostname)<br/>Follow redirects max 5"]
     Status{HTTP Status<br/>200-299?}
-    Redirect{Follows<br/>redirect?}
-    Timeout{Within<br/>timeout?}
+    Redirect{Location header<br/>& redirects < 5?}
     
-    Start --> Status
-    Status -->|Yes| Timeout
-    Status -->|No| Unhealthy["❌ UNHEALTHY"]
+    Start --> ParseURL
+    ParseURL -->|Invalid| ParseError["❌ UNHEALTHY<br/>URL POLICY"]
+    ParseURL -->|Valid| ResolveDNS
+    ResolveDNS -->|Private IP| PrivateError["❌ UNHEALTHY<br/>PRIVATE NETWORK"]
+    ResolveDNS -->|Valid| SendRequest
     
-    Timeout -->|Yes| Success["✅ HEALTHY<br/>Record response time"]
-    Timeout -->|No| TimedOut["❌ UNHEALTHY<br/>TIMEOUT"]
+    SendRequest --> Status
+    Status -->|200-299| Success["✅ HEALTHY<br/>Record response time"]
+    Status -->|Other| Redirect
     
-    Redirect -->|>5 redirects| TooMany["❌ UNHEALTHY<br/>REDIRECT LIMIT"]
-    Redirect -->|Valid| Status
-    Redirect -->|Invalid target| InvalidTarget["❌ UNHEALTHY<br/>INVALID REDIRECT"]
+    Redirect -->|Yes| ValidateNext["Validate redirect URL<br/>Resolve DNS again<br/>for new target"]
+    Redirect -->|No| NotFound["❌ UNHEALTHY<br/>HTTP {code}"]
+    ValidateNext -->|Valid| SendRequest
+    ValidateNext -->|Invalid/Private| PrivateError
+    
+    SendRequest -.->|Timeout| TimedOut["❌ UNHEALTHY<br/>TIMEOUT (10s)"]
+    SendRequest -.->|Connection error| ConnError["❌ UNHEALTHY<br/>CONNECTION FAILED"]
     
     style Success fill:#c8e6c9
-    style Unhealthy fill:#ffcdd2
+    style ParseError fill:#ffcdd2
+    style PrivateError fill:#ffcdd2
+    style NotFound fill:#ffcdd2
     style TimedOut fill:#ffcdd2
-    style TooMany fill:#ffcdd2
-    style InvalidTarget fill:#ffcdd2
+    style ConnError fill:#ffcdd2
 ```
 
 ## Container Architecture
@@ -283,11 +299,15 @@ graph LR
 
 ## Key Design Decisions
 
+### Single ASP.NET Core Instance
+- All components (API, scheduler, checks, email) run in one process
+- WebsiteChecker and ResultMailer are logical services coordinated by CheckService, not separate physical services
+- This design is simple for a showcase but unsuitable for distributed deployments
+
 ### Single-Instance Scheduler
-- In-process scheduler using hosted service
-- Lock-based mutual exclusion for checks
-- Prevents overlapping check execution
-- Not suitable for distributed deployments
+- In-process background service polling database every 5 seconds
+- Lock-based mutual exclusion prevents overlapping checks on same monitor
+- Directly queries PostgreSQL for due monitors, doesn't poll HTTP API
 
 ### Email Independence
 - Email status (Pending/Sent/Failed) tracked separately from health
